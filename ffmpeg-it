@@ -95,7 +95,7 @@ while true; do
       fi
       shift ;;
     -h | --help )
-      cat ffmpeg-it | grep '#' | head -n 33 | tail -n 31 | cut -c2-
+      cat $0 | grep '#' | head -n 33 | tail -n 31 | cut -c2-
       exit 1
       shift ;;
     -- )
