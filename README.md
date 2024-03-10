@@ -60,3 +60,8 @@ ffmpeg-it -i wmv -o avi -a none -r
 ## License
 
 This project is licensed under the GNU General Public License v2.1 - see the [LICENSE](LICENSE) file for details.
+
+## Thanks
+
+This script is one expansion of the [reply](https://stackoverflow.com/a/63137721/13890688) from Marco Eckstein in StackOverflow. 
+Thank you Marco :)
