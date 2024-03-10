@@ -145,7 +145,6 @@ do
         elif [ "$codec" = "none" ]; then
             ffmpeg -v quiet -stats -loglevel error -i "$inputFile" "$outputFile"
         fi
-        fi
     fi
     if [ $? -ne 0 ]; then
         echo "Error: Failed to encode $inputFile"
