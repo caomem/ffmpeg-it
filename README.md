@@ -11,18 +11,22 @@
 - Choose between different video codecs (h264, h265, none).
 - Search for files recursively in subdirectories.
 
+## Install
+```bash
+make install
+```
+
 ## Usage
 
 ```bash
-Usage: ffmpeg-it [-i|--input-extension SOURCE_EXTENSION] 
+ffmpeg-it [-i|--input-extension SOURCE_EXTENSION] 
                           [-o|--output-extension OUTPUT_EXTENSION] 
                           [-D|--delete] 
                           [-a|--acceleration [DEVICE]]
                           [-c|--codec {h264|h265|none}]
                           [-r|--recursive [MAXDEPTH]]
 ```
-
-## Options
+### Options
 
 - `-i, --input-extension`: Specify the input video file extension (default: mp4).
 - `-o, --output-extension`: Specify the output video file extension (default: mp4).

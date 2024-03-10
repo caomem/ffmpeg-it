@@ -9,6 +9,7 @@
 #                          [-a|--acceleration [DEVICE]]
 #                          [-c|--codec CODEC]
 #                          [-r|--recursive [MAXDEPTH]]
+#                          [-h|--help]
 #
 # Options:
 #   -i, --input-extension SOURCE_EXTENSION:
@@ -28,7 +29,8 @@
 #
 #   -r, --recursive [MAXDEPTH]:
 #       Search for video files recursively in subdirectories (default: false). Optionally specify the maximum depth to search.
-#
+#   -h, --help:
+#       Show this help message and exit.
 #
 # Description:
 #   This script searches for video files in the current directory and subdirectories
@@ -43,21 +45,8 @@
 
 
 usage() {
-    echo "Usage: $0 -i|--input-extension SOURCE_EXTENSION [-o|--output-extension TARGET_EXTENSION] [-D|--delete] [-a|--acceleration [DEVICE]] [-c|--codec {h264|h265}] [-r|--recursive [MAXDEPTH]]"
     echo "Encode video files in the current directory using ffmpeg."
-    Options:
-    echo "-i, --input-extension SOURCE_EXTENSION:
-    Source video file extension (default: mp4)."
-    echo "-o, --output-extension TARGET_EXTENSION:
-    Target video file extension (default: mp4)."
-    echo "-D, --delete:
-    Delete source files after encoding (default: false)."
-    echo "-a, --acceleration [DEVICE]:
-    Enable hardware acceleration for encoding. Optionally specify the device render (default: /dev/dri/renderD128)."
-    echo "-c, --codec {h264|h265|none}:
-    Select the video codec. Options: h264, h265, none (default: h264)."
-    echo "-r, --recursive [MAXDEPTH]:
-    Search for video files recursively in subdirectories (default: false). Optionally specify the maximum depth to search."
+    echo "Usage: $0 [-s|--source-extension SOURCE_EXTENSION] [-t|--target-extension TARGET_EXTENSION] [-D|--delete-source] [-a|--acceleration [DEVICE]] [-c|--codec {h264|h265|none}] [-r|--recursive [MAXDEPTH]] [-h|--help]"
     exit 1
 }
 
@@ -70,7 +59,7 @@ device="/dev/dri/renderD128"
 maxdepth="-maxdepth 1" # default to be no recursive
 
 # Parse command line options
-OPTS=`getopt -o i:o:Dac:d:r --long input-extension:,output-extension:,delete,acceleration,codec:,device:,recursive -n 'ffmpeg-it' -- "$@"`
+OPTS=`getopt -o s:t:Dac:d:rh --long source-extension:,target-extension:,delete-source,acceleration,codec:,device:,recursive,help -n 'ffmpeg-it' -- "$@"`
 if [ $? != 0 ] ; then echo "Failed parsing options." >&2 ; usage; fi
 
 eval set -- "$OPTS"
@@ -105,6 +94,10 @@ while true; do
         maxdepth=""
       fi
       shift ;;
+    -h | --help )
+      cat ffmpeg-it | grep '#' | head -n 33 | tail -n 31 | cut -c2-
+      exit 1
+      shift ;;
     -- )
       shift; break ;;
     * )
@@ -112,9 +105,11 @@ while true; do
   esac
 done
 
+
+
 # Check if required options are provided
 if [ -z "$inputExtension" ] || [ -z "$outputExtension" ]; then
-  echo "Error: Source and output extensions are required."
+  echo "Source and output extensions are required."
   usage
 fi
 

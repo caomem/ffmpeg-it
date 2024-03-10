@@ -3,4 +3,5 @@ install:
 	sudo cp ffmpeg-it /usr/bin
 
 update:
-	git clone 
+	git pull origin master
+	make install
