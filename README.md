@@ -19,15 +19,11 @@ make install
 ## Usage
 
 ```bash
-ffmpeg-it [-i|--input-extension SOURCE_EXTENSION] 
-                          [-o|--output-extension OUTPUT_EXTENSION] 
-                          [-D|--delete] 
-                          [-a|--acceleration [DEVICE]]
-                          [-c|--codec {h264|h265|none}]
-                          [-r|--recursive [MAXDEPTH]]
+ffmpeg-it --help
 ```
 ### Options
 
+- `-h, --help`: show usage message
 - `-i, --input-extension`: Specify the input video file extension (default: mp4).
 - `-o, --output-extension`: Specify the output video file extension (default: mp4).
 - `-D, --delete`: Delete source files after encoding (default: false).
@@ -42,9 +38,9 @@ ffmpeg-it [-i|--input-extension SOURCE_EXTENSION]
 ffmpeg-it -i mov -o mp4 -a
 ```
 
-2. Encode all `.mp4` files in the current directory and its subdirectories (with depth 2) to `.mp4` files using hardware acceleration:
+2. Encode all `.mp4` files in the current directory and its subdirectories (with depth 2) to `.mp4` files using hardware acceleration in device /dev/dri/renderD129 (dedicated GPU):
 ```bash
-ffmpeg-it -i mp4 -o mp4 -a -r 2
+ffmpeg-it -i mp4 -o mp4 -a /dev/dri/renderD129 -r 2
 ```
 
 3. Encode all `.avi` files in the current directory and its subdirectories to `.mkv` files using H.265 codec and delete the source files after encoding:
