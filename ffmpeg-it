@@ -3,7 +3,7 @@
 ################################################################################
 # ffmpeg-it - Wrapper to encode video files in the current directory and subdirectories using ffmpeg.
 #
-# Usage: ffmpeg-it -i|--input-extension SOURCE_EXTENSION 
+# Usage: ffmpeg-it -i|--input-extension INPUT_EXTENSION 
 #                          [-o|--output-extension TARGET_EXTENSION] 
 #                          [-D|--delete] 
 #                          [-a|--acceleration [DEVICE]]
@@ -12,8 +12,8 @@
 #                          [-h|--help]
 #
 # Options:
-#   -i, --input-extension SOURCE_EXTENSION:
-#       Source video file extension.
+#   -i, --input-extension INPUT_EXTENSION:
+#       Input video file extension.
 #
 #   -o, --output-extension TARGET_EXTENSION:
 #       Target video file extension (default: mp4).
@@ -46,7 +46,7 @@
 
 usage() {
     echo "Encode video files in the current directory using ffmpeg."
-    echo "Usage: $0 [-s|--source-extension SOURCE_EXTENSION] [-t|--target-extension TARGET_EXTENSION] [-D|--delete-source] [-a|--acceleration [DEVICE]] [-c|--codec {h264|h265|none}] [-r|--recursive [MAXDEPTH]] [-h|--help]"
+    echo "Usage: $0 [-i|--input-extension INPUT_EXTENSION] [-o|--output-extension TARGET_EXTENSION] [-D|--delete] [-a|--acceleration [DEVICE]] [-c|--codec {h264|h265|none}] [-r|--recursive [MAXDEPTH]] [-h|--help]"
     exit 1
 }
 
@@ -59,7 +59,7 @@ device="/dev/dri/renderD128"
 maxdepth="-maxdepth 1" # default to be no recursive
 
 # Parse command line options
-OPTS=`getopt -o s:t:Dac:d:rh --long source-extension:,target-extension:,delete-source,acceleration,codec:,device:,recursive,help -n 'ffmpeg-it' -- "$@"`
+OPTS=`getopt -o i:o:Dac:d:rh --long input-extension:,output-extension:,delete,acceleration,codec:,device:,recursive,help -n 'ffmpeg-it' -- "$@"`
 if [ $? != 0 ] ; then echo "Failed parsing options." >&2 ; usage; fi
 
 eval set -- "$OPTS"
