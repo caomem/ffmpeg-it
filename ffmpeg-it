@@ -12,7 +12,7 @@
 #
 # Options:
 #   INPUT_EXTENSION:
-#       Input video file extension.
+#       Input video file extension. Can be a list of extensions, separated by white spaces.
 #
 #   -o, --output-extension TARGET_EXTENSION:
 #       Target video file extension (default: same as source file).
