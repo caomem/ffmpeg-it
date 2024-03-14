@@ -1,167 +1,216 @@
 #!/bin/bash
-
-################################################################################
+#
 # ffmpeg-it - Wrapper to encode video files in the current directory and subdirectories using ffmpeg.
 #
-# Usage: ffmpeg-it -i|--input-extension INPUT_EXTENSION 
-#                          [-o|--output-extension TARGET_EXTENSION] 
-#                          [-D|--delete] 
-#                          [-a|--acceleration [DEVICE]]
+# Usage: ffmpeg-it INPUT_EXTENSION [INPUT_EXTENSION ...]
+#                          [-o|--output-extension TARGET_EXTENSION]
+#                          [-D|--delete]
+#                          [-a|--acceleration[=DEVICE]]
 #                          [-c|--codec CODEC]
-#                          [-r|--recursive [MAXDEPTH]]
+#                          [-r|--recursive[=MAXDEPTH]]
 #                          [-h|--help]
 #
 # Options:
-#   -i, --input-extension INPUT_EXTENSION:
+#   INPUT_EXTENSION:
 #       Input video file extension.
 #
 #   -o, --output-extension TARGET_EXTENSION:
-#       Target video file extension (default: mp4).
+#       Target video file extension (default: same as source file).
 #
 #   -D, --delete:
 #       Delete source files after encoding (default: false).
 #
-#   -a, --acceleration [DEVICE]:
+#   -a, --acceleration[=DEVICE]:
 #       Enable hardware acceleration for encoding. Optionally specify the device render (default: /dev/dri/renderD128).
 #
 #   -c, --codec {h264|h265|none}:
 #       Select the video codec. Options: h264, h265, none (default: h264).
 #
-#   -r, --recursive [MAXDEPTH]:
+#   -r, --recursive[=MAXDEPTH]:
 #       Search for video files recursively in subdirectories (default: false). Optionally specify the maximum depth to search.
 #   -h, --help:
 #       Show this help message and exit.
 #
 # Description:
 #   This script searches for video files in the current directory and subdirectories
-#   with the specified input extension, encodes them using ffmpeg, and saves the
+#   with the specified input extensions, encodes them using ffmpeg, and saves the
 #   encoded files with the specified output extension. Optionally, it can delete the
 #   source files after encoding. Hardware acceleration using VAAPI can be enabled
 #   with the -a or --acceleration option.
 #
 # Author: Guilherme Philippi <guilherme.philippi@hotmail.com>
 # Date: March 2024
-################################################################################
-
 
 usage() {
-    echo "Encode video files in the current directory using ffmpeg."
-    echo "Usage: $0 [-i|--input-extension INPUT_EXTENSION] [-o|--output-extension TARGET_EXTENSION] [-D|--delete] [-a|--acceleration [DEVICE]] [-c|--codec {h264|h265|none}] [-r|--recursive [MAXDEPTH]] [-h|--help]"
-    exit 1
+  echo "Encode video files in the current directory using ffmpeg."
+  echo "Usage: $0 INPUT_EXTENSION [INPUT_EXTENSION ...] [-o|--output-extension TARGET_EXTENSION] [-D|--delete] [-a|--acceleration[=DEVICE]] [-c|--codec {h264|h265|none}] [-r|--recursive[=MAXDEPTH]] [-h|--help]"
+  exit 1
 }
 
 # Default values
-outputExtension="mp4"
+same_extension=true
 deleteSourceFile=false
 enableAcceleration=false
 codec="h264"
 device="/dev/dri/renderD128"
-maxdepth="-maxdepth 1" # default to be no recursive
+maxdepth=1 # recursive default as false
 
 # Parse command line options
-OPTS=`getopt -o i:o:Dac:d:rh --long input-extension:,output-extension:,delete,acceleration,codec:,device:,recursive,help -n 'ffmpeg-it' -- "$@"`
-if [ $? != 0 ] ; then echo "Failed parsing options." >&2 ; usage; fi
+TEMP=$(getopt -o 'i:o:Da::c:d:r::h' --long 'input-extension:,output-extension:,delete,acceleration::,codec:,device:,recursive::,help' -n 'ffmpeg-it' -- "$@")
 
-eval set -- "$OPTS"
+if [ $? -ne 0 ]; then
+  echo "Failed parsing options." >&2
+  usage
+  exit 1
+fi
+
+eval set -- "$TEMP"
+unset TEMP
 
 # Extract options and their arguments into variables
 while true; do
   case "$1" in
-    -i | --input-extension )
-      inputExtension="$2"
-      shift 2 ;;
-    -o | --output-extension )
-      outputExtension="$2"
-      shift 2 ;;
-    -D | --delete )
-      deleteSourceFile=true
-      shift ;;
-    -a | --acceleration )
-      enableAcceleration=true
-      if [[ -n "$2" && "$2" != -* ]]; then
-        device="$2"
-        shift
-      fi
-      shift ;;
-    -c | --codec )
-      codec="$2"
-      shift 2 ;;
-    -r | --recursive )
-      if [[ -n "$2" && "$2" != -* ]]; then
-        maxdepth="-maxdepth $2"
-        shift
-      else
-        maxdepth=""
-      fi
-      shift ;;
-    -h | --help )
-      cat $0 | grep '#' | head -n 33 | tail -n 31 | cut -c2-
-      exit 1
-      shift ;;
-    -- )
-      shift; break ;;
-    * )
-      break ;;
+  '-o' | '--output-extension')
+    same_extension=false
+    outputExtension="$2"
+    shift 2
+    continue
+    ;;
+  '-D' | '--delete')
+    deleteSourceFile=true
+    shift
+    continue
+    ;;
+  '-a' | '--acceleration')
+    enableAcceleration=true
+    case "$2" in
+    '') ;;
+    *)
+      device="$2"
+      ;;
+    esac
+    shift 2
+    continue
+    ;;
+  '-c' | '--codec')
+    codec="$2"
+    shift 2
+    ;;
+  '-r' | '--recursive')
+    case "$2" in
+    '')
+      maxdepth=false
+      ;;
+    *)
+      maxdepth="$2"
+      ;;
+    esac
+    shift 2
+    continue
+    ;;
+  '-h' | '--help')
+    cat $0 | grep '#' | head -n 33 | tail -n 31 | cut -c2-
+    exit 1
+    ;;
+  '--')
+    shift
+    break
+    ;;
+  *)
+    echo "Untreated parameter $2" >&2
+    usage
+    exit 1
+    ;;
   esac
 done
 
-
-
 # Check if required options are provided
-if [ -z "$inputExtension" ] || [ -z "$outputExtension" ]; then
-  echo "Source and output extensions are required."
+if [ $# = 0 ]; then
+  echo "Error: Input extensions not found." >&2
   usage
+  exit 1
 fi
 
 # Setting Internal Field Separator to handle file names with spaces correctly
-IFS=$'\n'; set -f
+IFS=$'\n'
+set -f
 
 # Loop through each input file in the current directory and subdirectories
-for inputFile in $(find . $maxdepth -type f -iname "*.$inputExtension")
-do
-    # Generating output file name by replacing input extension with output extension
-    if [ "$inputExtension" = "$outputExtension" ]; then
-        outputFile="${inputFile%.*}-processed.$outputExtension"
+
+files=""
+for extension; do
+  if [ "$maxdepth" = false ]; then
+    result=$(find . -type f -iname "*.$extension")
+  else
+    result=$(find . -maxdepth "$maxdepth" -type f -iname "*.$extension")
+  fi
+  if [ -n "$result" -a $? = 0 ]; then
+    if [ -n "$files" ]; then
+      files+=$'\n'"$result"
     else
-        outputFile="${inputFile%.*}.$outputExtension"  
+      files+="$result"
     fi
-    
-    # Encoding the video using ffmpeg
-    echo "Starting $inputFile"
-    
-    if [ "$enableAcceleration" = true ]; then
-        if [ "$codec" = "h264" ]; then
-            ffmpeg -v quiet -stats -loglevel error -vaapi_device "$device" -i "$inputFile" -vf 'format=nv12|vaapi,hwupload' -c:v h264_vaapi "$outputFile"
-        elif [ "$codec" = "h265" ]; then
-            ffmpeg -v quiet -stats -loglevel error -vaapi_device "$device" -i "$inputFile" -vf 'format=nv12|vaapi,hwupload' -c:v hevc_vaapi "$outputFile"
-        elif [ "$codec" = "none" ]; then
-            ffmpeg -v quiet -stats -loglevel error -i "$inputFile" "$outputFile" # TODO: is it possible to do with hardware acceleration?
-        fi
+  fi
+done
+
+files=$(echo "$files" | sort -V) # sort files by folders
+
+for file in $files; do
+  # Generating output file name by replacing input extension with output extension
+  inputExtension="${file##*.}"
+  
+  if [ "$same_extension" = true ]; then
+    outputExtension="$inputExtension"
+  fi
+  
+  if [ "$inputExtension" = "$outputExtension" ]; then
+    tag=1
+    outputFile="${file%.*}-$tag.$outputExtension"
+    while [ -e $outputFile ]; do
+      tag=$(($tag+1)) # Will found the next file-tag name that is not used yet 
+      outputFile="${file%.*}-$tag.$outputExtension"
+    done
+  else
+    outputFile="${file%.*}.$outputExtension"
+  fi  
+  echo "Starting $file..."
+
+  # Encoding the video using ffmpeg
+  if [ "$enableAcceleration" = true ]; then
+    if [ "$codec" = "h264" ]; then
+      ffmpeg -v quiet -stats -loglevel error -vaapi_device "$device" -i "$file" -vf 'format=nv12|vaapi,hwupload' -c:v h264_vaapi "$outputFile"
+    elif [ "$codec" = "h265" ]; then
+      ffmpeg -v quiet -stats -loglevel error -vaapi_device "$device" -i "$file" -vf 'format=nv12|vaapi,hwupload' -c:v hevc_vaapi "$outputFile"
+    elif [ "$codec" = "none" ]; then
+      ffmpeg -v quiet -stats -loglevel error -i "$file" "$outputFile" # TODO: is it possible to do with hardware acceleration?
+    fi
+  else
+    if [ "$codec" = "h264" ]; then
+      ffmpeg -v quiet -stats -loglevel error -i "$file" -c:v libx264 "$outputFile"
+    elif [ "$codec" = "h265" ]; then
+      ffmpeg -v quiet -stats -loglevel error -i "$file" -c:v libx265 "$outputFile"
+    elif [ "$codec" = "none" ]; then
+      ffmpeg -v quiet -stats -loglevel error -i "$file" "$outputFile"
+    fi
+  fi
+  if [ $? -ne 0 ]; then
+    echo "Error: Failed to encode $file"
+    continue
+  fi
+
+  # Optionally delete the source file if "-D" flag is provided
+  if [ "$deleteSourceFile" = true ]; then
+    if [ -f "$outputFile" ]; then
+      rm "$file"
+      if [ "$inputExtension" = "$outputExtension" ]; then
+        mv "$outputFile" "$file"
+      fi
     else
-        if [ "$codec" = "h264" ]; then
-            ffmpeg -v quiet -stats -loglevel error -i "$inputFile" -c:v libx264 "$outputFile"
-        elif [ "$codec" = "h265" ]; then
-            ffmpeg -v quiet -stats -loglevel error -i "$inputFile" -c:v libx265 "$outputFile"
-        elif [ "$codec" = "none" ]; then
-            ffmpeg -v quiet -stats -loglevel error -i "$inputFile" "$outputFile"
-        fi
+      echo "Error: Output file don't created for $file. Pass the deletion to avoid file loss." >&2
     fi
-    if [ $? -ne 0 ]; then
-        echo "Error: Failed to encode $inputFile"
-    fi
-    
-    # Optionally delete the source file if "-D" flag is provided
-    if [ "$deleteSourceFile" = true ]; then
-        if [ -f "$outputFile" ]; then
-            rm "$inputFile"
-            if [ "$inputExtension" = "$outputExtension" ]; then
-                mv "$outputFile" "$inputFile"
-            fi
-        else
-            echo "Error: Target file not created for $inputFile"
-        fi
-    fi
+  fi
 done
 
 # Resetting Internal Field Separator and file name generation
-unset IFS; set +f
+unset IFS
+set +f
