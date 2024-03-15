@@ -181,9 +181,6 @@ for file in $files; do
     outputFile="${file%.*}.$outputExtension"
   fi
 
-  ffmpeg -f concat -i list.txt -vf "vflip" -vcodec libx265 -crf 35 output.mp4
-  ffmpeg -f concat -i <$files -vf "vflip" -vcodec libx265 -crf 35 output.mp4
-
   echo "Starting $file..."
 
   if [ "$enableAcceleration" = true ]; then
