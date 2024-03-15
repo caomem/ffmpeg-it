@@ -8,6 +8,7 @@
 #                          [-a|--acceleration[=DEVICE]]
 #                          [-c|--codec CODEC]
 #                          [-r|--recursive[=MAXDEPTH]]
+#                          [-l|--log]
 #                          [-h|--help]
 #
 # Options:
@@ -48,6 +49,7 @@ usage() {
 }
 
 # Default values
+concatenate=false
 same_extension=true
 deleteSourceFile=false
 enableAcceleration=false
@@ -55,8 +57,7 @@ codec="h264"
 device="/dev/dri/renderD128"
 maxdepth=1 # recursive default as false
 
-# Parse command line options
-TEMP=$(getopt -o 'i:o:Da::c:d:r::h' --long 'input-extension:,output-extension:,delete,acceleration::,codec:,device:,recursive::,help' -n 'ffmpeg-it' -- "$@")
+TEMP=$(getopt -o 'o:Da::c:d:r::h' --long 'output-extension:,delete,acceleration::,codec:,device:,recursive::,help,concatenate' -n 'ffmpeg-it' -- "$@")
 
 if [ $? -ne 0 ]; then
   echo "Failed parsing options." >&2
@@ -67,7 +68,6 @@ fi
 eval set -- "$TEMP"
 unset TEMP
 
-# Extract options and their arguments into variables
 while true; do
   case "$1" in
   '-o' | '--output-extension')
@@ -112,6 +112,10 @@ while true; do
     cat $0 | grep '#' | head -n 33 | tail -n 31 | cut -c2-
     exit 1
     ;;
+  '--concatenate')
+    concatenate=true
+    shift 1
+    ;;  
   '--')
     shift
     break
@@ -124,7 +128,6 @@ while true; do
   esac
 done
 
-# Check if required options are provided
 if [ $# = 0 ]; then
   echo "Error: Input extensions not found." >&2
   usage
@@ -134,8 +137,6 @@ fi
 # Setting Internal Field Separator to handle file names with spaces correctly
 IFS=$'\n'
 set -f
-
-# Loop through each input file in the current directory and subdirectories
 
 files=""
 for extension; do
@@ -155,8 +156,14 @@ done
 
 files=$(echo "$files" | sort -V) # sort files by folders
 
+if [ "$concatenate" = true ]; then # Hidden option to concatenate all inputs in the same .mp4 file.
+  files="${files//'./'/"file '$(pwd)/"}"
+  files="${files//".$extension"/".$extension'"}"
+  ffmpeg -f concat -safe 0 -i <(echo "$files") -vf "vflip" -vcodec libx265 -crf 35 output.mp4
+  exit 1
+fi
+
 for file in $files; do
-  # Generating output file name by replacing input extension with output extension
   inputExtension="${file##*.}"
   
   if [ "$same_extension" = true ]; then
@@ -172,10 +179,13 @@ for file in $files; do
     done
   else
     outputFile="${file%.*}.$outputExtension"
-  fi  
+  fi
+
+  ffmpeg -f concat -i list.txt -vf "vflip" -vcodec libx265 -crf 35 output.mp4
+  ffmpeg -f concat -i <$files -vf "vflip" -vcodec libx265 -crf 35 output.mp4
+
   echo "Starting $file..."
 
-  # Encoding the video using ffmpeg
   if [ "$enableAcceleration" = true ]; then
     if [ "$codec" = "h264" ]; then
       ffmpeg -v quiet -stats -loglevel error -vaapi_device "$device" -i "$file" -vf 'format=nv12|vaapi,hwupload' -c:v h264_vaapi "$outputFile"

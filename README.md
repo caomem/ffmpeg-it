@@ -48,16 +48,16 @@ ffmpeg-it mp4 --acceleration=/dev/dri/renderD129 --recursive=2
 ffmpeg-it avi -o mkv -c h265 -r -D
 ```
 
-4. To encode with h264 all `.mp4`, `.avi`, `.m4v`, `.3gp` and `.mkv` files in the current directory and all subdirectories use:
-```bash
-ffmpeg-it mp4 avi m4v 3gp mkv -r -D
-```
-> Useful for trying to reduce disk space usage by these files
-
-5. Encode all `.wmv` files in the current directory to `.mp4` files without force a codec:
+4. Encode all `.wmv` files in the current directory to `.mp4` files without force a codec:
 ```bash
 ffmpeg-it wmv -o mp4 -c none
 ```
+
+5. To encode with h264 all `.mp4`, `.mp3`, `.avi`, `.m4v`, `.3gp` and `.mkv` files in the current directory and all subdirectories use:
+```bash
+ffmpeg-it mp4 mp3 avi m4v 3gp mkv -r -D -c none
+```
+> Useful for trying to reduce disk space usage by these files
 
 ## License
 
