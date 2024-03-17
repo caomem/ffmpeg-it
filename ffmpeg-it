@@ -159,7 +159,7 @@ files=$(echo "$files" | sort -V) # sort files by folders
 if [ "$concatenate" = true ]; then # Hidden option to concatenate all inputs in the same .mp4 file.
   files="${files//'./'/"file '$(pwd)/"}"
   files="${files//".$extension"/".$extension'"}"
-  ffmpeg -f concat -safe 0 -i <(echo "$files") -vf "vflip" -vcodec libx265 -crf 35 output.mp4
+  ffmpeg -f concat -safe 0 -i <(echo "$files") -vcodec libx265 -crf 35 output.mp4
   exit 1
 fi
 
