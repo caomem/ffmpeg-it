@@ -22,7 +22,8 @@
 #       Delete source files after encoding (default: false).
 #
 #   -a, --acceleration[=DEVICE]:
-#       Enable hardware acceleration for encoding. Optionally specify the device render (default: /dev/dri/renderD128).
+#       Enable hardware acceleration for encoding. Optionally specify the device render (default: /dev/dri/renderD128). 
+#       Use ls /dev/dri/render* to check available renders.
 #
 #   -c, --codec {h264|h265|none}:
 #       Select the video codec. Options: h264, h265, none (default: h264).

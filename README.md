@@ -25,7 +25,7 @@ ffmpeg-it --help
 - `-h, --help`: show usage message
 - `-o, --output-extension`: Specify the output video file extension (default: same as source file).
 - `-D, --delete`: Delete source files after encoding (default: false).
-- `-a, --acceleration`: Enable hardware acceleration for encoding (default: false). Optionally specify the device render (default: /dev/dri/renderD128).
+- `-a, --acceleration`: Enable hardware acceleration for encoding (default: false). Optionally specify the device render (default: /dev/dri/renderD128). Use `ls /dev/dri/render*` to check available renders.
 - `-c, --codec`: Select the video codec. Options: h264, h265, none (default: h264).
 - `-r, --recursive`: Search for video files recursively in subdirectories (default: false). Optionally specify the maximum depth to search (default: no maximum).
 
@@ -37,7 +37,7 @@ ffmpeg-it --help
 ffmpeg-it mov -o mp4 -a
 ```
 
-2. Encode all `.mp4` files in the current directory and its subdirectories (with depth 2) using hardware acceleration in device /dev/dri/renderD129 (dedicated GPU):
+2. Encode all `.mp4` files in the current directory and its subdirectories (with depth 2) using hardware acceleration in device /dev/dri/renderD129 (use `ls /dev/dri/render*` to check available renders):
 ```bash
 ffmpeg-it mp4 --acceleration=/dev/dri/renderD129 --recursive=2
 ```
