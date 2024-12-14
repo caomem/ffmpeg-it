@@ -30,6 +30,10 @@
 #
 #   -r, --recursive[=MAXDEPTH]:
 #       Search for video files recursively in subdirectories (default: false). Optionally specify the maximum depth to search.
+#
+#   --concatenate:
+#       *Beta* option to concatenate all video inputs in the same output.mp4 file using h265 and crf 35 (compression).
+#
 #   -h, --help:
 #       Show this help message and exit.
 #
@@ -45,7 +49,7 @@
 
 usage() {
   echo "Encode video files in the current directory using ffmpeg."
-  echo "Usage: $0 INPUT_EXTENSION [INPUT_EXTENSION ...] [-o|--output-extension TARGET_EXTENSION] [-D|--delete] [-a|--acceleration[=DEVICE]] [-c|--codec {h264|h265|none}] [-r|--recursive[=MAXDEPTH]] [-h|--help]"
+  echo "Usage: $0 INPUT_EXTENSION [INPUT_EXTENSION ...] [-o|--output-extension TARGET_EXTENSION] [-D|--delete] [-a|--acceleration[=DEVICE]] [-c|--codec {h264|h265|none}] [-r|--recursive[=MAXDEPTH]] [--concatenate] [-h|--help]"
   exit 1
 }
 
@@ -110,7 +114,7 @@ while true; do
     continue
     ;;
   '-h' | '--help')
-    cat $0 | grep '#' | head -n 33 | tail -n 31 | cut -c2-
+    cat $0 | grep '#' | head -n 39 | tail -n 37 | cut -c2-
     exit 1
     ;;
   '--concatenate')
@@ -157,7 +161,7 @@ done
 
 files=$(echo "$files" | sort -V) # sort files by folders
 
-if [ "$concatenate" = true ]; then # Hidden option to concatenate all inputs in the same .mp4 file.
+if [ "$concatenate" = true ]; then # option to concatenate all inputs in the same .mp4 file.
   files="${files//'./'/"file '$(pwd)/"}"
   files="${files//".$extension"/".$extension'"}"
   ffmpeg -f concat -safe 0 -i <(echo "$files") -vcodec libx265 -crf 35 output.mp4

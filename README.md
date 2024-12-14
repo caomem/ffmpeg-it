@@ -28,6 +28,7 @@ ffmpeg-it --help
 - `-a, --acceleration`: Enable hardware acceleration for encoding (default: false). Optionally specify the device render (default: /dev/dri/renderD128). Use `ls /dev/dri/render*` to check available renders.
 - `-c, --codec`: Select the video codec. Options: h264, h265, none (default: h264).
 - `-r, --recursive`: Search for video files recursively in subdirectories (default: false). Optionally specify the maximum depth to search (default: no maximum).
+- `--concatenate`: *Beta* option to concatenate all video inputs in the same output.mp4 file using h265 and crf 35 (compression).
 
 ## Examples
 
