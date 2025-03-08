@@ -11,6 +11,11 @@
 - Encode files recursively in subdirectories.
 
 ## Install
+Just execute
+```bash
+curl -s https://gitlab.com/gphilippi/ffmpeg-it/-/raw/master/install.sh | bash || echo "ERROR: fail to download install script"
+```
+or, instead, use
 ```bash
 make install
 ```
