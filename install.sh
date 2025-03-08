@@ -5,7 +5,7 @@ url="https://gitlab.com/gphilippi/ffmpeg-it/-/raw/master/ffmpeg-it"
 # Destination directory in the user's PATH
 dest_dir="$HOME/.local/bin"  # Change this to '~/bin' or other PATH directory if needed
 mkdir -p $dest_dir 
-script_name="smithify"
+script_name="ffmpeg-it"
 
 # Download the script
 echo "Downloading $script_name from GitLab..."
