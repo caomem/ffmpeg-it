@@ -7,7 +7,9 @@
 #                          [-D|--delete]
 #                          [-a|--acceleration[=DEVICE]]
 #                          [-c|--codec CODEC]
+#                          [-s|--subscodec SUBSCODEC]
 #                          [-r|--recursive[=MAXDEPTH]]
+#                          [--allstreams]
 #                          [-l|--log]
 #                          [-h|--help]
 #
@@ -22,11 +24,17 @@
 #       Delete source files after encoding (default: false).
 #
 #   -a, --acceleration[=DEVICE]:
-#       Enable hardware acceleration for encoding. Optionally specify the device render (default: /dev/dri/renderD128). 
+#       Enable hardware acceleration for encoding. Optionally specify the device render (default: the first available). 
 #       Use ls /dev/dri/render* to check available renders.
 #
 #   -c, --codec {h264|h265|none}:
-#       Select the video codec. Options: h264, h265, none (default: h264).
+#       Select the video codec. Options: h264, h265, none (default: none).
+#
+#   -s, --subscodec {dvdsub|none}:
+#       Select the subtitle codec. Options: dvdsub, none (default: none).
+#
+#   --allstreams:
+#       Encode all the available video, audio, subtitles and metadata streams. (default: false).
 #
 #   -r, --recursive[=MAXDEPTH]:
 #       Search for video files recursively in subdirectories (default: false). Optionally specify the maximum depth to search.
@@ -49,7 +57,7 @@
 
 usage() {
   echo "Encode video files in the current directory using ffmpeg."
-  echo "Usage: $0 INPUT_EXTENSION [INPUT_EXTENSION ...] [-o|--output-extension TARGET_EXTENSION] [-D|--delete] [-a|--acceleration[=DEVICE]] [-c|--codec {h264|h265|none}] [-r|--recursive[=MAXDEPTH]] [--concatenate] [-h|--help]"
+  echo "Usage: $0 INPUT_EXTENSION [INPUT_EXTENSION ...] [-o|--output-extension TARGET_EXTENSION] [-D|--delete] [-a|--acceleration[=DEVICE]] [-c|--codec {h264|h265|none}] [-s|--subscodec {dvdsub|none}] [--allstreams] [-r|--recursive[=MAXDEPTH]] [--concatenate] [-h|--help]"
   exit 1
 }
 
@@ -58,11 +66,13 @@ concatenate=false
 same_extension=true
 deleteSourceFile=false
 enableAcceleration=false
-codec="h264"
-device="/dev/dri/renderD128"
+codec="none"
+subscodec=( "" )
+allstreams=( "" )
+device=$(ls /dev/dri/render* | head -n1)
 maxdepth=1 # recursive default as false
 
-TEMP=$(getopt -o 'o:Da::c:d:r::h' --long 'output-extension:,delete,acceleration::,codec:,device:,recursive::,help,concatenate' -n 'ffmpeg-it' -- "$@")
+TEMP=$(getopt -o 'o:Da::c:s:d:r::h' --long 'output-extension:,delete,allstreams,acceleration::,codec:,subscodec:,device:,recursive::,help,concatenate' -n 'ffmpeg-it' -- "$@")
 
 if [ $? -ne 0 ]; then
   echo "Failed parsing options." >&2
@@ -86,6 +96,11 @@ while true; do
     shift
     continue
     ;;
+  '--allstreams')
+    allstreams=( -map 0 )
+    shift
+    continue
+    ;;
   '-a' | '--acceleration')
     enableAcceleration=true
     case "$2" in
@@ -101,6 +116,15 @@ while true; do
     codec="$2"
     shift 2
     ;;
+  '-s' | '--subscodec')
+    subscodec="$2"
+    if [ "$2" = "dvdsub" ]; then
+      subscodec=( -c:s dvdsub )
+    else
+      subscodec=( "" )
+    fi
+    shift 2
+    ;;
   '-r' | '--recursive')
     case "$2" in
     '')
@@ -114,7 +138,7 @@ while true; do
     continue
     ;;
   '-h' | '--help')
-    cat $0 | grep '#' | head -n 39 | tail -n 37 | cut -c2-
+    cat $0 | grep '#' | head -n 47 | tail -n 45 | cut -c2-
     exit 1
     ;;
   '--concatenate')
@@ -190,19 +214,20 @@ for file in $files; do
 
   if [ "$enableAcceleration" = true ]; then
     if [ "$codec" = "h264" ]; then
-      ffmpeg -v quiet -stats -loglevel error -vaapi_device "$device" -i "$file" -vf 'format=nv12|vaapi,hwupload' -c:v h264_vaapi "$outputFile"
+      ffmpeg -v quiet -stats -loglevel error -vaapi_device "$device" -i "$file" -vf 'format=nv12|vaapi,hwupload' -c:v h264_vaapi ${allstreams[@]} ${subscodec[@]} "$outputFile"
     elif [ "$codec" = "h265" ]; then
-      ffmpeg -v quiet -stats -loglevel error -vaapi_device "$device" -i "$file" -vf 'format=nv12|vaapi,hwupload' -c:v hevc_vaapi "$outputFile"
+      ffmpeg -v quiet -stats -loglevel error -vaapi_device "$device" -i "$file" -vf 'format=nv12|vaapi,hwupload' -c:v hevc_vaapi ${allstreams[@]} ${subscodec[@]} "$outputFile"
     elif [ "$codec" = "none" ]; then
-      ffmpeg -v quiet -stats -loglevel error -i "$file" "$outputFile" # TODO: is it possible to do with hardware acceleration?
+      echo ffmpeg -v quiet -stats -loglevel error -i "$file" ${allstreams[@]} ${subscodec[@]} "$outputFile" # TODO: is it possible to do with hardware acceleration?
+      ffmpeg -v quiet -stats -loglevel error -i "$file" ${allstreams[@]} ${subscodec[@]} "$outputFile" # TODO: is it possible to do with hardware acceleration?
     fi
   else
     if [ "$codec" = "h264" ]; then
-      ffmpeg -v quiet -stats -loglevel error -i "$file" -c:v libx264 "$outputFile"
+      ffmpeg -v quiet -stats -loglevel error -i "$file" -c:v libx264 ${allstreams[@]} ${subscodec[@]} "$outputFile"
     elif [ "$codec" = "h265" ]; then
-      ffmpeg -v quiet -stats -loglevel error -i "$file" -c:v libx265 "$outputFile"
+      ffmpeg -v quiet -stats -loglevel error -i "$file" -c:v libx265 ${allstreams[@]} ${subscodec[@]} "$outputFile"
     elif [ "$codec" = "none" ]; then
-      ffmpeg -v quiet -stats -loglevel error -i "$file" "$outputFile"
+      ffmpeg -v quiet -stats -loglevel error -i "$file" ${allstreams[@]} ${subscodec[@]} "$outputFile"
     fi
   fi
   if [ $? -ne 0 ]; then
