@@ -1,6 +1,6 @@
 install:
 	chmod +x ffmpeg-it
-	sudo cp ffmpeg-it /usr/bin
+	sudo cp ffmpeg-it ~/.local/bin
 
 update:
 	git pull origin master
