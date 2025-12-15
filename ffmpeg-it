@@ -7,10 +7,10 @@
 #                          [-D|--delete]
 #                          [-a|--acceleration[=DEVICE]]
 #                          [-c|--codec CODEC]
+#                          [--allstreams]
 #                          [-s|--subscodec SUBSCODEC]
 #                          [-r|--recursive[=MAXDEPTH]]
-#                          [--allstreams]
-#                          [-l|--log]
+#                          [-v|--verbose VERBOSE_LEVEL]
 #                          [-h|--help]
 #                          -- [ffmpeg direct parameters]
 #
@@ -28,6 +28,9 @@
 #       Enable hardware acceleration for encoding. Optionally specify the device render (default: the first available). 
 #       Use ls /dev/dri/render* to check available renders.
 #
+#   -q, --quality QUALITY_VALUE:
+#       Sets the quality Constant Rate Factor (CRF, CQP or similar). This is a integer value commonly between 0 and 51 (check codec docs). 
+#
 #   -c, --codec {h264|h265|none}:
 #       Select the video codec. Options: h264, h265, none (default: none).
 #
@@ -42,6 +45,12 @@
 #
 #   --concatenate:
 #       *Beta* option to concatenate all video inputs in the same output.mp4 file using h265 and crf 35 (compression).
+#
+#   --debug:
+#       To just print the generated ffmpeg command and leave.
+#
+#   -v, --verbose VERBOSE_LEVEL:
+#       Sets the verbose level. Options: quiet, panic, fatal, error, warning, info, verbose, debug, trace (default: error). 
 #
 #   -h, --help:
 #       Show this help message and exit.
@@ -60,7 +69,7 @@
 
 usage() {
   echo "Encode video files in the current directory using ffmpeg."
-  echo "Usage: $0 INPUT_EXTENSION [INPUT_EXTENSION ...] [-o|--output-extension TARGET_EXTENSION] [-D|--delete] [-a|--acceleration[=DEVICE]] [-c|--codec {h264|h265|none}] [-s|--subscodec {dvdsub|none}] [--allstreams] [-r|--recursive[=MAXDEPTH]] [--concatenate] [-h|--help]"
+  echo "Usage: $0 INPUT_EXTENSION [INPUT_EXTENSION ...] [-o|--output-extension TARGET_EXTENSION] [-D|--delete] [-a|--acceleration[=DEVICE]] [-q|--quality QUALITY_VALUE] [-c|--codec {h264|h265|none}] [-s|--subscodec {dvdsub|none}] [--allstreams] [-r|--recursive[=MAXDEPTH]] [--concatenate] [--debug] [-v|--verbose VERBOSE_LEVEL] [-h|--help] -- [ffmpeg direct parameters]"
   exit 1
 }
 
@@ -70,7 +79,8 @@ concatenate=false
 same_extension=true
 deleteSourceFile=false
 enableAcceleration=false
-quality=()
+verbose="error"
+quality=false
 codec="none"
 subscodec=()
 allstreams=()
@@ -100,7 +110,7 @@ if [ "$debug" = true ]; then
   echo "ffmpeg args: ${ffmpeg_args[@]}"
 fi
 
-TEMP=$(getopt -o 'o:Da::q::c:s:d:r::h' --long 'debug,output-extension:,delete,allstreams,acceleration::,quality::,codec:,subscodec:,device:,recursive::,help,concatenate' -n 'ffmpeg-it' -- "${wrapper_args[@]}")
+TEMP=$(getopt -o 'o:Da::q:c:s:d:r::v:h' --long 'output-extension:,delete,allstreams,acceleration::,quality::,codec:,subscodec:,device:,recursive::,verbose:,help,concatenate,debug' -n 'ffmpeg-it' -- "${wrapper_args[@]}")
 unset wrapper_args
 
 if [ $? -ne 0 ]; then
@@ -148,14 +158,13 @@ while true; do
     continue
     ;;
   '-q' | '--quality')
-    case "$2" in
-    '') 
-      quality=( -crf 0 )
-      ;;
-    *)
-      quality=( -crf $2 )
-      ;;
-    esac
+    quality=true
+    quality_factor=$2
+    shift 2
+    continue
+    ;;
+  '-v' | '--verbose')
+    verbose=$2
     shift 2
     continue
     ;;
@@ -164,11 +173,8 @@ while true; do
     shift 2
     ;;
   '-s' | '--subscodec')
-    subscodec="$2"
     if [ "$2" = "dvdsub" ]; then
       subscodec=( -c:s dvdsub )
-    else
-      subscodec=( "" )
     fi
     shift 2
     ;;
@@ -185,7 +191,7 @@ while true; do
     continue
     ;;
   '-h' | '--help')
-    cat $0 | grep '#' | head -n 47 | tail -n 45 | cut -c2-
+    cat $0 | grep '#' | head -n 58 | tail -n 57 | cut -c2-
     exit 1
     ;;
   '--concatenate')
@@ -261,14 +267,15 @@ for file in $files; do
 
   command=(
     ffmpeg
-    -v error
+    -v "$verbose"
     -stats
     -i "$file"
   )
   if [ "$enableAcceleration" = true ]; then
-    command+=(
-      -vaapi_device "$device"
-    )
+    command+=(-vaapi_device "$device")
+    if [ "$quality" = true ]; then
+      command+=(-qp "$quality_factor")
+    fi
     if [ "$codec" = "h264" ]; then
       command+=(
         -c:v h264_vaapi
@@ -283,19 +290,21 @@ for file in $files; do
       echo -e "\033[93mwarning:\033[0m hardware acceleration without specific codec" # TODO: is it possible to do it with hardware acceleration?
     fi
   else
+    if [ "$quality" = true ]; then
+      command+=(-crf "$quality_factor")
+    fi
     if [ "$codec" = "h264" ]; then
       command+=(-c:v libx264)
     elif [ "$codec" = "h265" ]; then
       command+=(
         -c:v libx265 
-        -x265-params log-level=error
+        -x265-params log-level="$verbose"
       )
     fi
   fi
   command+=(
     "${allstreams[@]}"
     "${subscodec[@]}"
-    "${quality[@]}"
     "${ffmpeg_args[@]}"
     "$outputFile"
   )
