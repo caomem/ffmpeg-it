@@ -65,13 +65,15 @@ usage() {
 }
 
 # Default values
+debug=false
 concatenate=false
 same_extension=true
 deleteSourceFile=false
 enableAcceleration=false
+quality=()
 codec="none"
-subscodec=( "" )
-allstreams=( "" )
+subscodec=()
+allstreams=()
 device=$(ls /dev/dri/render* | head -n1)
 maxdepth=1 # recursive default as false
 
@@ -93,7 +95,12 @@ for arg; do
   fi
 done
 
-TEMP=$(getopt -o 'o:Da::c:s:d:r::h' --long 'output-extension:,delete,allstreams,acceleration::,codec:,subscodec:,device:,recursive::,help,concatenate' -n 'ffmpeg-it' -- "${wrapper_args[@]}")
+if [ "$debug" = true ]; then
+  echo "ffmpeg-it args: ${wrapper_args[@]}"
+  echo "ffmpeg args: ${ffmpeg_args[@]}"
+fi
+
+TEMP=$(getopt -o 'o:Da::q::c:s:d:r::h' --long 'debug,output-extension:,delete,allstreams,acceleration::,quality::,codec:,subscodec:,device:,recursive::,help,concatenate' -n 'ffmpeg-it' -- "${wrapper_args[@]}")
 unset wrapper_args
 
 if [ $? -ne 0 ]; then
@@ -108,6 +115,11 @@ unset TEMP
 #TODO: -qp quality -vf video video filter
 while true; do
   case "$1" in
+  '--debug')
+    debug=true
+    shift
+    continue
+    ;;
   '-o' | '--output-extension')
     same_extension=false
     outputExtension="$2"
@@ -130,6 +142,18 @@ while true; do
     '') ;;
     *)
       device="$2"
+      ;;
+    esac
+    shift 2
+    continue
+    ;;
+  '-q' | '--quality')
+    case "$2" in
+    '') 
+      quality=( -crf 0 )
+      ;;
+    *)
+      quality=( -crf $2 )
       ;;
     esac
     shift 2
@@ -235,23 +259,54 @@ for file in $files; do
 
   echo "Starting $file..."
 
+  command=(
+    ffmpeg
+    -v error
+    -stats
+    -i "$file"
+  )
   if [ "$enableAcceleration" = true ]; then
+    command+=(
+      -vaapi_device "$device"
+    )
     if [ "$codec" = "h264" ]; then
-      ffmpeg -v quiet -stats -loglevel error -vaapi_device "$device" -i "$file" -vf 'format=nv12|vaapi,hwupload' -c:v h264_vaapi ${allstreams[@]} ${subscodec[@]} "${ffmpeg_args[@]}" "$outputFile"
+      command+=(
+        -c:v h264_vaapi
+        -vf 'format=nv12|vaapi,hwupload'
+      )
     elif [ "$codec" = "h265" ]; then
-      ffmpeg -v quiet -stats -loglevel error -vaapi_device "$device" -i "$file" -vf 'format=nv12|vaapi,hwupload' -c:v hevc_vaapi ${allstreams[@]} ${subscodec[@]} "${ffmpeg_args[@]}" "$outputFile"
+      command+=(
+        -c:v hevc_vaapi
+        -vf 'format=nv12|vaapi,hwupload'
+      )
     elif [ "$codec" = "none" ]; then
-      ffmpeg -v quiet -stats -loglevel error -i "$file" ${allstreams[@]} ${subscodec[@]} "${ffmpeg_args[@]}" "$outputFile" # TODO: is it possible to do with hardware acceleration?
+      echo -e "\033[93mwarning:\033[0m hardware acceleration without specific codec" # TODO: is it possible to do it with hardware acceleration?
     fi
   else
     if [ "$codec" = "h264" ]; then
-      ffmpeg -v quiet -stats -loglevel error -i "$file" -c:v libx264 ${allstreams[@]} ${subscodec[@]} "${ffmpeg_args[@]}" "$outputFile"
+      command+=(-c:v libx264)
     elif [ "$codec" = "h265" ]; then
-      ffmpeg -v quiet -stats -loglevel error -i "$file" -c:v libx265 ${allstreams[@]} ${subscodec[@]} "${ffmpeg_args[@]}" "$outputFile"
-    elif [ "$codec" = "none" ]; then
-      ffmpeg -v quiet -stats -loglevel error -i "$file" ${allstreams[@]} ${subscodec[@]} "${ffmpeg_args[@]}" "$outputFile"
+      command+=(
+        -c:v libx265 
+        -x265-params log-level=error
+      )
     fi
   fi
+  command+=(
+    "${allstreams[@]}"
+    "${subscodec[@]}"
+    "${quality[@]}"
+    "${ffmpeg_args[@]}"
+    "$outputFile"
+  )
+
+  if [ "$debug" = true ]; then
+    echo "ffmpeg command: ${command[@]}"
+    exit 1
+  fi
+
+  "${command[@]}"
+
   if [ $? -ne 0 ]; then
     echo "Error: Failed to encode $file"
     continue
