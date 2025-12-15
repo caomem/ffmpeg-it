@@ -12,6 +12,7 @@
 #                          [--allstreams]
 #                          [-l|--log]
 #                          [-h|--help]
+#                          -- [ffmpeg direct parameters]
 #
 # Options:
 #   INPUT_EXTENSION:
@@ -44,6 +45,8 @@
 #
 #   -h, --help:
 #       Show this help message and exit.
+#   
+#   All arguments after -- are passed directly to ffmpeg.
 #
 # Description:
 #   This script searches for video files in the current directory and subdirectories
@@ -72,7 +75,26 @@ allstreams=( "" )
 device=$(ls /dev/dri/render* | head -n1)
 maxdepth=1 # recursive default as false
 
-TEMP=$(getopt -o 'o:Da::c:s:d:r::h' --long 'output-extension:,delete,allstreams,acceleration::,codec:,subscodec:,device:,recursive::,help,concatenate' -n 'ffmpeg-it' -- "$@")
+ffmpeg_args=()
+wrapper_args=()
+
+# split between ffmpeg args (after --) and wrapper args (before --)
+found_sep=false
+for arg; do
+  if [ "$arg" = "--" ] && [ "$found_sep" = false ]; then
+    found_sep=true
+    continue
+  fi
+
+  if [ "$found_sep" = true ]; then
+    ffmpeg_args+=("$arg")
+  else
+    wrapper_args+=("$arg")
+  fi
+done
+
+TEMP=$(getopt -o 'o:Da::c:s:d:r::h' --long 'output-extension:,delete,allstreams,acceleration::,codec:,subscodec:,device:,recursive::,help,concatenate' -n 'ffmpeg-it' -- "${wrapper_args[@]}")
+unset wrapper_args
 
 if [ $? -ne 0 ]; then
   echo "Failed parsing options." >&2
@@ -83,6 +105,7 @@ fi
 eval set -- "$TEMP"
 unset TEMP
 
+#TODO: -qp quality -vf video video filter
 while true; do
   case "$1" in
   '-o' | '--output-extension')
@@ -214,20 +237,19 @@ for file in $files; do
 
   if [ "$enableAcceleration" = true ]; then
     if [ "$codec" = "h264" ]; then
-      ffmpeg -v quiet -stats -loglevel error -vaapi_device "$device" -i "$file" -vf 'format=nv12|vaapi,hwupload' -c:v h264_vaapi ${allstreams[@]} ${subscodec[@]} "$outputFile"
+      ffmpeg -v quiet -stats -loglevel error -vaapi_device "$device" -i "$file" -vf 'format=nv12|vaapi,hwupload' -c:v h264_vaapi ${allstreams[@]} ${subscodec[@]} "${ffmpeg_args[@]}" "$outputFile"
     elif [ "$codec" = "h265" ]; then
-      ffmpeg -v quiet -stats -loglevel error -vaapi_device "$device" -i "$file" -vf 'format=nv12|vaapi,hwupload' -c:v hevc_vaapi ${allstreams[@]} ${subscodec[@]} "$outputFile"
+      ffmpeg -v quiet -stats -loglevel error -vaapi_device "$device" -i "$file" -vf 'format=nv12|vaapi,hwupload' -c:v hevc_vaapi ${allstreams[@]} ${subscodec[@]} "${ffmpeg_args[@]}" "$outputFile"
     elif [ "$codec" = "none" ]; then
-      echo ffmpeg -v quiet -stats -loglevel error -i "$file" ${allstreams[@]} ${subscodec[@]} "$outputFile" # TODO: is it possible to do with hardware acceleration?
-      ffmpeg -v quiet -stats -loglevel error -i "$file" ${allstreams[@]} ${subscodec[@]} "$outputFile" # TODO: is it possible to do with hardware acceleration?
+      ffmpeg -v quiet -stats -loglevel error -i "$file" ${allstreams[@]} ${subscodec[@]} "${ffmpeg_args[@]}" "$outputFile" # TODO: is it possible to do with hardware acceleration?
     fi
   else
     if [ "$codec" = "h264" ]; then
-      ffmpeg -v quiet -stats -loglevel error -i "$file" -c:v libx264 ${allstreams[@]} ${subscodec[@]} "$outputFile"
+      ffmpeg -v quiet -stats -loglevel error -i "$file" -c:v libx264 ${allstreams[@]} ${subscodec[@]} "${ffmpeg_args[@]}" "$outputFile"
     elif [ "$codec" = "h265" ]; then
-      ffmpeg -v quiet -stats -loglevel error -i "$file" -c:v libx265 ${allstreams[@]} ${subscodec[@]} "$outputFile"
+      ffmpeg -v quiet -stats -loglevel error -i "$file" -c:v libx265 ${allstreams[@]} ${subscodec[@]} "${ffmpeg_args[@]}" "$outputFile"
     elif [ "$codec" = "none" ]; then
-      ffmpeg -v quiet -stats -loglevel error -i "$file" ${allstreams[@]} ${subscodec[@]} "$outputFile"
+      ffmpeg -v quiet -stats -loglevel error -i "$file" ${allstreams[@]} ${subscodec[@]} "${ffmpeg_args[@]}" "$outputFile"
     fi
   fi
   if [ $? -ne 0 ]; then
