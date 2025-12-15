@@ -232,9 +232,9 @@ while true; do
 done
 
 if [ "$debug" = true ]; then
-  echo "ffmpeg-it args: ${wrapper_args[@]}"
-  echo "ffmpeg args: ${ffmpeg_args[@]}"
-  echo -e "ffmpeg vf extra args: ${extra_vf_filters[@]}\n"
+  echo -e ${wrapper_args:+"\033[33mffmpeg-it args:\033[0m ${wrapper_args[@]}"}
+  echo -e ${ffmpeg_args:+"\033[33mffmpeg args:\033[0m ${ffmpeg_args[@]}"}
+  echo -e ${extra_vf_filters:+"\033[33mffmpeg vf extra args:\033[0m ${extra_vf_filters[@]}\n"}
 fi
 
 if [ $# = 0 ]; then
@@ -300,7 +300,7 @@ for file in $files; do
   )
   if [ "$enableAcceleration" = true ]; then
     command+=(-vaapi_device "$device")
-    base_vf="format=nv12|vaapi,hwupload"
+    base_vf="format=nv12,hwupload"
     if [ "$quality" = true ]; then
       command+=(-qp "$quality_factor")
     fi
@@ -328,11 +328,29 @@ for file in $files; do
       )
     fi
   fi
+
+  cpu_filters=()
+  vaapi_filters=()
+  for f in "${extra_vf_filters[@]}"; do
+    if [[ "$f" == *_vaapi* ]]; then
+      vaapi_filters+=("$f")
+    else
+      cpu_filters+=("$f")
+    fi
+  done
+  if [ "$debug" = true ]; then
+    [ -n "$vaapi_filters" ] && echo -e "\033[33mvaapi_filters args:\033[0m ${vaapi_filters[@]}"
+    [ -n "$cpu_filters" ] && echo -e "\033[33mcpu_filters args:\033[0m ${cpu_filters[@]}"
+  fi
+  base_and_cpu_vf=($base_vf $cpu_filters)
   IFS=,
-  vf="${base_vf:+$base_vf}${extra_vf_filters:+${base_vf:+,}${extra_vf_filters[*]}}"
+  vf="${cpu_filters:+${cpu_filters[*]}}${base_vf:+${cpu_filters:+,}$base_vf}${vaapi_filters:+${base_and_cpu_vf:+,}${vaapi_filters[*]}}"
   IFS=$'\n'
+  if [ -n "$vf" ]; then
+    command+=(-vf "$vf")
+  fi
+
   command+=(
-    ${vf:+-vf \'"$vf"\'}
     ${allstreams:+"${allstreams[@]}"}
     ${subscodec:+"${subscodec[@]}"}
     ${ffmpeg_args:+"${ffmpeg_args[@]}"}
@@ -340,7 +358,19 @@ for file in $files; do
   )
 
   if [ "$debug" = true ]; then
-    echo -e "ffmpeg command: ${command[@]}\n"
+    print_cmd() {
+      IFS=' '
+      local out=()
+      local arg
+      for arg in "$@"; do
+        out+=( "$(printf '%q' "$arg")" )
+      done
+      printf '%s\n' "${out[*]}"
+      IFS=$'\n'
+    }
+
+    print_cmd "${command[@]}"
+    echo
     continue
   fi
 
