@@ -7,6 +7,7 @@
 #                          [-D|--delete]
 #                          [-a|--acceleration[=DEVICE]]
 #                          [-c|--codec CODEC]
+#                          [--resolution PRESET]
 #                          [--allstreams]
 #                          [-s|--subscodec SUBSCODEC]
 #                          [-r|--recursive[=MAXDEPTH]]
@@ -30,6 +31,9 @@
 #
 #   -q, --quality QUALITY_VALUE:
 #       Sets the quality Constant Rate Factor (CRF, CQP or similar). This is a integer value commonly between 0 and 51 (check codec docs). 
+#
+#   --resolution PRESET
+#       Resize video resolution using a preset resolution. Options: sd, hd, 720p, fullhd, 1080p, fhd, 2k, 4k, phone.
 #
 #   -c, --codec {h264|h265|none}:
 #       Select the video codec. Options: h264, h265, none (default: none).
@@ -69,9 +73,21 @@
 
 usage() {
   echo "Encode video files in the current directory using ffmpeg."
-  echo "Usage: $0 INPUT_EXTENSION [INPUT_EXTENSION ...] [-o|--output-extension TARGET_EXTENSION] [-D|--delete] [-a|--acceleration[=DEVICE]] [-q|--quality QUALITY_VALUE] [-c|--codec {h264|h265|none}] [-s|--subscodec {dvdsub|none}] [--allstreams] [-r|--recursive[=MAXDEPTH]] [--concatenate] [--debug] [-v|--verbose VERBOSE_LEVEL] [-h|--help] -- [ffmpeg direct parameters]"
+  echo "Usage: $0 INPUT_EXTENSION [INPUT_EXTENSION ...] [-o|--output-extension TARGET_EXTENSION] [-D|--delete] [-a|--acceleration[=DEVICE]] [-q|--quality QUALITY_VALUE] [--resolution RESOLUTION] [-c|--codec {h264|h265|none}] [-s|--subscodec {dvdsub|none}] [--allstreams] [-r|--recursive[=MAXDEPTH]] [--concatenate] [--debug] [-v|--verbose VERBOSE_LEVEL] [-h|--help] -- [ffmpeg direct parameters]"
   exit 1
 }
+
+declare -A RESOLUTION_PRESETS=(
+  [sd]="854:480"
+  [hd]="1280:720"
+  [fullhd]="1920:1080"
+  [720p]="1280:720"
+  [1080p]="1920:1080"
+  [fhd]="1920:1080"
+  [2k]="2560:1440"
+  [4k]="3840:2160"
+  [phone]="720:1280"
+)
 
 # Default values
 debug=false
@@ -81,6 +97,7 @@ deleteSourceFile=false
 enableAcceleration=false
 verbose=24 #warning
 quality=false
+resolution_preset=""
 codec="none"
 subscodec=()
 allstreams=()
@@ -133,7 +150,7 @@ done
 ffmpeg_args=(${temp_ffmpeg_args[@]})
 unset temp_ffmpeg_args
 
-TEMP=$(getopt -o 'o:Da::q:c:s:d:r::v:h' --long 'output-extension:,delete,allstreams,acceleration::,quality::,codec:,subscodec:,device:,recursive::,verbose:,help,concatenate,debug' -n 'ffmpeg-it' -- "${wrapper_args[@]}")
+TEMP=$(getopt -o 'o:Da::q:c:s:d:r::v:h' --long 'output-extension:,delete,allstreams,acceleration::,quality::,resolution:,codec:,subscodec:,device:,recursive::,verbose:,help,concatenate,debug' -n 'ffmpeg-it' -- "${wrapper_args[@]}")
 
 if [ $? -ne 0 ]; then
   [ "$verbose" -ge 0 ] && echo -e "\033[31mError:\033[0m Failed parsing options." >&2
@@ -181,6 +198,11 @@ while true; do
   '-q' | '--quality')
     quality=true
     quality_factor=$2
+    shift 2
+    continue
+    ;;
+  '--resolution')
+    resolution_preset="$2"
     shift 2
     continue
     ;;
@@ -243,7 +265,7 @@ while true; do
     continue
     ;;
   '-h' | '--help')
-    cat $0 | grep '#' | head -n 58 | tail -n 57 | cut -c2-
+    cat $0 | grep '#' | head -n 63 | tail -n 62 | cut -c2-
     exit 1
     ;;
   '--concatenate')
@@ -362,6 +384,21 @@ for file in $files; do
         -c:v libx265 
         -x265-params log-level="$verbose"
       )
+    fi
+  fi
+
+  if [ -n "$resolution_preset" ]; then
+    if [ -z "${RESOLUTION_PRESETS[$resolution_preset]}" ]; then
+      [ "$verbose" -ge 0 ] && echo -e "\033[31mError:\033[0m Unknown resolution preset '$resolution_preset'" >&2
+      exit 1
+    fi
+
+    w_h="${RESOLUTION_PRESETS[$resolution_preset]}"
+
+    if [ "$enableAcceleration" = true ]; then
+      extra_vf_filters+=("scale_vaapi=w=${w_h%:*}:h=${w_h#*:}")
+    else
+      extra_vf_filters+=("scale=${w_h}")
     fi
   fi
 
