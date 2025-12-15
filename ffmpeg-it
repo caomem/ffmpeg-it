@@ -50,7 +50,7 @@
 #       To just print the generated ffmpeg command and leave.
 #
 #   -v, --verbose VERBOSE_LEVEL:
-#       Sets the verbose level. Options: quiet, panic, fatal, error, warning, info, verbose, debug, trace (default: error). 
+#       Sets the verbose level. Options: quiet, panic, fatal, error, warning, info, verbose, debug, trace (default: warning). 
 #
 #   -h, --help:
 #       Show this help message and exit.
@@ -79,7 +79,7 @@ concatenate=false
 same_extension=true
 deleteSourceFile=false
 enableAcceleration=false
-verbose="error"
+verbose=24 #warning
 quality=false
 codec="none"
 subscodec=()
@@ -115,7 +115,7 @@ while [ $i -lt ${#ffmpeg_args[@]} ]; do
     -vf)
       ((i++))
       [ $i -ge ${#ffmpeg_args[@]} ] && {
-        echo "Error: -vf requires an argument" >&2
+        [ "$verbose" -ge 0 ] && echo -e "\033[31mError:\033[0m -vf requires an argument" >&2
         exit 1
       }
       extra_vf_filters+=("${ffmpeg_args[$i]}")
@@ -136,7 +136,7 @@ unset temp_ffmpeg_args
 TEMP=$(getopt -o 'o:Da::q:c:s:d:r::v:h' --long 'output-extension:,delete,allstreams,acceleration::,quality::,codec:,subscodec:,device:,recursive::,verbose:,help,concatenate,debug' -n 'ffmpeg-it' -- "${wrapper_args[@]}")
 
 if [ $? -ne 0 ]; then
-  echo "Failed parsing options." >&2
+  [ "$verbose" -ge 0 ] && echo -e "\033[31mError:\033[0m Failed parsing options." >&2
   usage
   exit 1
 fi
@@ -185,7 +185,38 @@ while true; do
     continue
     ;;
   '-v' | '--verbose')
-    verbose=$2
+    case "$2" in
+      'quiet')
+        verbose=-8
+        ;;
+      'panic')
+        verbose=0
+        ;;
+      'fatal')
+        verbose=8
+        ;;
+      'error')
+        verbose=16
+        ;;
+      'warning')
+        verbose=24
+        ;;
+      'info')
+        verbose=32
+        ;;
+      'verbose')
+        verbose=40
+        ;;
+      'debug')
+        verbose=48
+        ;;
+      'trace')
+        verbose=56
+        ;;
+      *)
+      device="$2"
+      ;;
+    esac
     shift 2
     continue
     ;;
@@ -224,21 +255,21 @@ while true; do
     break
     ;;
   *)
-    echo "Untreated parameter $2" >&2
+    [ "$verbose" -ge 0 ] && echo -e "\033[31mError:\033[0m Untreated parameter $2" >&2
     usage
     exit 1
     ;;
   esac
 done
 
-if [ "$debug" = true ]; then
-  echo -e ${wrapper_args:+"\033[33mffmpeg-it args:\033[0m ${wrapper_args[@]}"}
-  echo -e ${ffmpeg_args:+"\033[33mffmpeg args:\033[0m ${ffmpeg_args[@]}"}
-  echo -e ${extra_vf_filters:+"\033[33mffmpeg vf extra args:\033[0m ${extra_vf_filters[@]}\n"}
+if [ "$debug" = true ] && [ "$verbose" -ge 40 ]; then
+  [ -n "$wrapper_args" ] && echo -e "\033[33mffmpeg-it args:\033[0m ${wrapper_args[@]}"
+  [ -n "$ffmpeg_args" ] && echo -e "\033[33mffmpeg args:\033[0m ${ffmpeg_args[@]}"
+  [ -n "$extra_vf_filters" ] && echo -e "\033[33mffmpeg vf extra args:\033[0m ${extra_vf_filters[@]}"
 fi
 
 if [ $# = 0 ]; then
-  echo "Error: Input extensions not found." >&2
+  [ "$verbose" -ge 0 ] && echo -e "\033[31mError:\033[0m Input extensions not found." >&2
   usage
   exit 1
 fi
@@ -290,14 +321,19 @@ for file in $files; do
     outputFile="${file%.*}.$outputExtension"
   fi
 
-  echo -e "\033[36mStarting\033[0m $file..."
+  [ "$verbose" -ge 0 ] && echo -e "\033[36mStarting\033[0m $file..."
 
   command=(
     ffmpeg
     -v "$verbose"
-    -stats
     -i "$file"
   )
+  if [ "$verbose" -ge 0 ]; then
+    command+=(-stats)
+  else
+    command+=(-nostats)
+  fi
+
   if [ "$enableAcceleration" = true ]; then
     command+=(-vaapi_device "$device")
     base_vf="format=nv12,hwupload"
@@ -313,7 +349,7 @@ for file in $files; do
         -c:v hevc_vaapi
       )
     elif [ "$codec" = "none" ]; then
-      echo -e "\033[93mwarning:\033[0m hardware acceleration without specific codec" # TODO: is it possible to do it with hardware acceleration?
+      [ "$verbose" -ge 24 ] && echo -e "\033[93mwarning:\033[0m hardware acceleration without specific codec" # TODO: is it possible to do it with hardware acceleration?
     fi
   else
     if [ "$quality" = true ]; then
@@ -338,7 +374,7 @@ for file in $files; do
       cpu_filters+=("$f")
     fi
   done
-  if [ "$debug" = true ]; then
+  if [ "$verbose" -ge 40 ]; then
     [ -n "$vaapi_filters" ] && echo -e "\033[33mvaapi_filters args:\033[0m ${vaapi_filters[@]}"
     [ -n "$cpu_filters" ] && echo -e "\033[33mcpu_filters args:\033[0m ${cpu_filters[@]}"
   fi
@@ -370,14 +406,13 @@ for file in $files; do
     }
 
     print_cmd "${command[@]}"
-    echo
     continue
   fi
 
   "${command[@]}"
 
   if [ $? -ne 0 ]; then
-    echo -e "\033[31mError:\033[0m Failed to encode $file"
+    [ "$verbose" -ge 16 ] && echo -e "\033[31mError:\033[0m Failed to encode $file" >&2
     continue
   fi
 
@@ -389,7 +424,7 @@ for file in $files; do
         mv "$outputFile" "$file"
       fi
     else
-      echo -e "\033[93mwarning:\033[0m Output file don't created for $file. Pass the deletion to avoid file loss." >&2
+      [ "$verbose" -ge 24 ] && echo -e "\033[93mwarning:\033[0m Output file don't created for $file. Pass the deletion to avoid file loss." >&2
     fi
   fi
 done
