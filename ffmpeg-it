@@ -318,11 +318,12 @@ done
 
 files=$(echo "$files" | sort -V) # sort files by folders
 
-if [ "$concatenate" = true ]; then # option to concatenate all inputs in the same .mp4 file.
-  files="${files//'./'/"file '$(pwd)/"}"
-  files="${files//".$extension"/".$extension'"}"
-  ffmpeg -f concat -safe 0 -i <(echo "$files") -vcodec libx265 -crf 35 output.mp4
-  exit 1
+if [ "$concatenate" = true ]; then
+  concat_list=$(mktemp)
+
+  while IFS= read -r file; do
+    printf "file '%s'\n" "$(realpath "$file")" >> "$concat_list"
+  done <<< "$files"
 fi
 
 for file in $files; do
@@ -331,25 +332,42 @@ for file in $files; do
   if [ "$same_extension" = true ]; then
     outputExtension="$inputExtension"
   fi
-  
-  if [ "$inputExtension" = "$outputExtension" ]; then
-    tag=1
-    outputFile="${file%.*}-$tag.$outputExtension"
-    while [ -e $outputFile ]; do
-      tag=$(($tag+1)) # Will found the next file-tag name that is not used yet 
-      outputFile="${file%.*}-$tag.$outputExtension"
-    done
-  else
-    outputFile="${file%.*}.$outputExtension"
-  fi
-
-  [ "$verbose" -ge 0 ] && echo -e "\033[36mStarting\033[0m $file..."
-
   command=(
     ffmpeg
     -v "$verbose"
-    -i "$file"
   )
+
+  if [ "$concatenate" = true ]; then
+    outputFile="output.$outputExtension"
+    tag=0
+    while [ -e $outputFile ]; do
+      tag=$(($tag+1)) # Will found the next output-tag name that is not used yet 
+      outputFile="output-$tag.$outputExtension"
+    done
+
+    command+=(
+      -f concat
+      -safe 0
+      -i "$concat_list"
+    )
+  else
+    if [ "$inputExtension" = "$outputExtension" ]; then
+      tag=1
+      outputFile="${file%.*}-$tag.$outputExtension"
+      while [ -e $outputFile ]; do
+        tag=$(($tag+1)) # Will found the next file-tag name that is not used yet 
+        outputFile="${file%.*}-$tag.$outputExtension"
+      done
+    else
+      outputFile="${file%.*}.$outputExtension"
+    fi
+    [ "$verbose" -ge 0 ] && echo -e "\033[36mStarting\033[0m $file..."
+
+    command+=(
+      -i "$file"
+    )
+  fi 
+
   if [ "$verbose" -ge 0 ]; then
     command+=(-stats)
   else
@@ -443,10 +461,19 @@ for file in $files; do
     }
 
     print_cmd "${command[@]}"
+    if [ "$concatenate" = true ]; then
+      exit 0
+    fi
     continue
   fi
 
   "${command[@]}"
+
+  if [ "$concatenate" = true ]; then
+    [ $? -ne 0 ] && [ "$verbose" -ge 0 ] && echo -e "\033[31mError:\033[0m Failed to encode $concat_list" >&2 && exit 1
+    rm -f "$concat_list"
+    exit 0
+  fi
 
   if [ $? -ne 0 ]; then
     [ "$verbose" -ge 16 ] && echo -e "\033[31mError:\033[0m Failed to encode $file" >&2
