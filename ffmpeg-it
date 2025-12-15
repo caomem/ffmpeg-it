@@ -88,6 +88,7 @@ device=$(ls /dev/dri/render* | head -n1)
 maxdepth=1 # recursive default as false
 
 ffmpeg_args=()
+extra_vf_filters=()
 wrapper_args=()
 
 # split between ffmpeg args (after --) and wrapper args (before --)
@@ -105,13 +106,34 @@ for arg; do
   fi
 done
 
-if [ "$debug" = true ]; then
-  echo "ffmpeg-it args: ${wrapper_args[@]}"
-  echo "ffmpeg args: ${ffmpeg_args[@]}"
-fi
+i=0
+extra_vf_filters=()
+temp_ffmpeg_args=()
+while [ $i -lt ${#ffmpeg_args[@]} ]; do
+  arg="${ffmpeg_args[$i]}"
+  case "$arg" in
+    -vf)
+      ((i++))
+      [ $i -ge ${#ffmpeg_args[@]} ] && {
+        echo "Error: -vf requires an argument" >&2
+        exit 1
+      }
+      extra_vf_filters+=("${ffmpeg_args[$i]}")
+      ;;
+    -vf=*)
+      extra_vf_filters+=("${arg#*=}")
+      ;;
+    *)
+      temp_ffmpeg_args+=("$arg")
+      ;;
+  esac
+
+  ((i++))
+done
+ffmpeg_args=(${temp_ffmpeg_args[@]})
+unset temp_ffmpeg_args
 
 TEMP=$(getopt -o 'o:Da::q:c:s:d:r::v:h' --long 'output-extension:,delete,allstreams,acceleration::,quality::,codec:,subscodec:,device:,recursive::,verbose:,help,concatenate,debug' -n 'ffmpeg-it' -- "${wrapper_args[@]}")
-unset wrapper_args
 
 if [ $? -ne 0 ]; then
   echo "Failed parsing options." >&2
@@ -122,7 +144,6 @@ fi
 eval set -- "$TEMP"
 unset TEMP
 
-#TODO: -qp quality -vf video video filter
 while true; do
   case "$1" in
   '--debug')
@@ -210,6 +231,12 @@ while true; do
   esac
 done
 
+if [ "$debug" = true ]; then
+  echo "ffmpeg-it args: ${wrapper_args[@]}"
+  echo "ffmpeg args: ${ffmpeg_args[@]}"
+  echo -e "ffmpeg vf extra args: ${extra_vf_filters[@]}\n"
+fi
+
 if [ $# = 0 ]; then
   echo "Error: Input extensions not found." >&2
   usage
@@ -263,7 +290,7 @@ for file in $files; do
     outputFile="${file%.*}.$outputExtension"
   fi
 
-  echo "Starting $file..."
+  echo -e "\033[36mStarting\033[0m $file..."
 
   command=(
     ffmpeg
@@ -273,18 +300,17 @@ for file in $files; do
   )
   if [ "$enableAcceleration" = true ]; then
     command+=(-vaapi_device "$device")
+    base_vf="format=nv12|vaapi,hwupload"
     if [ "$quality" = true ]; then
       command+=(-qp "$quality_factor")
     fi
     if [ "$codec" = "h264" ]; then
       command+=(
         -c:v h264_vaapi
-        -vf 'format=nv12|vaapi,hwupload'
       )
     elif [ "$codec" = "h265" ]; then
       command+=(
         -c:v hevc_vaapi
-        -vf 'format=nv12|vaapi,hwupload'
       )
     elif [ "$codec" = "none" ]; then
       echo -e "\033[93mwarning:\033[0m hardware acceleration without specific codec" # TODO: is it possible to do it with hardware acceleration?
@@ -302,22 +328,26 @@ for file in $files; do
       )
     fi
   fi
+  IFS=,
+  vf="${base_vf:+$base_vf}${extra_vf_filters:+${base_vf:+,}${extra_vf_filters[*]}}"
+  IFS=$'\n'
   command+=(
-    "${allstreams[@]}"
-    "${subscodec[@]}"
-    "${ffmpeg_args[@]}"
+    ${vf:+-vf \'"$vf"\'}
+    ${allstreams:+"${allstreams[@]}"}
+    ${subscodec:+"${subscodec[@]}"}
+    ${ffmpeg_args:+"${ffmpeg_args[@]}"}
     "$outputFile"
   )
 
   if [ "$debug" = true ]; then
-    echo "ffmpeg command: ${command[@]}"
-    exit 1
+    echo -e "ffmpeg command: ${command[@]}\n"
+    continue
   fi
 
   "${command[@]}"
 
   if [ $? -ne 0 ]; then
-    echo "Error: Failed to encode $file"
+    echo -e "\033[31mError:\033[0m Failed to encode $file"
     continue
   fi
 
@@ -329,7 +359,7 @@ for file in $files; do
         mv "$outputFile" "$file"
       fi
     else
-      echo "Error: Output file don't created for $file. Pass the deletion to avoid file loss." >&2
+      echo -e "\033[93mwarning:\033[0m Output file don't created for $file. Pass the deletion to avoid file loss." >&2
     fi
   fi
 done
