@@ -10,6 +10,7 @@
 #                          [--resolution PRESET]
 #                          [--allstreams]
 #                          [-s|--subscodec SUBSCODEC]
+#                          [--concatenate]
 #                          [-r|--recursive[=MAXDEPTH]]
 #                          [-v|--verbose VERBOSE_LEVEL]
 #                          [-h|--help]
@@ -48,7 +49,7 @@
 #       Search for video files recursively in subdirectories (default: false). Optionally specify the maximum depth to search.
 #
 #   --concatenate:
-#       *Beta* option to concatenate all video inputs in the same output.mp4 file using h265 and crf 35 (compression).
+#       To concatenate all video inputs in the same output file.
 #
 #   --debug:
 #       To just print the generated ffmpeg command and leave.
@@ -88,6 +89,22 @@ declare -A RESOLUTION_PRESETS=(
   [4k]="3840:2160"
   [phone]="720:1280"
 )
+
+map_x265_verbose() {
+  if [ "$1" -lt 0 ]; then
+    echo -1
+  elif [ "$1" -lt 16 ]; then
+    echo 0
+  elif [ "$1" -lt 24 ]; then
+    echo 1
+  elif [ "$1" -lt 32 ]; then
+    echo 2
+  elif [ "$1" -lt 40 ]; then
+    echo 3
+  else
+    echo 4
+  fi
+}
 
 # Default values
 debug=false
@@ -265,7 +282,7 @@ while true; do
     continue
     ;;
   '-h' | '--help')
-    cat $0 | grep '#' | head -n 63 | tail -n 62 | cut -c2-
+    cat $0 | grep '#' | head -n 64 | tail -n 63 | cut -c2-
     exit 1
     ;;
   '--concatenate')
@@ -319,11 +336,10 @@ done
 files=$(echo "$files" | sort -V) # sort files by folders
 
 if [ "$concatenate" = true ]; then
-  concat_list=$(mktemp)
-
-  while IFS= read -r file; do
-    printf "file '%s'\n" "$(realpath "$file")" >> "$concat_list"
-  done <<< "$files"
+  inputs=()
+  for file in $files; do
+    inputs+=(-i "$file")
+  done
 fi
 
 for file in $files; do
@@ -345,11 +361,7 @@ for file in $files; do
       outputFile="output-$tag.$outputExtension"
     done
 
-    command+=(
-      -f concat
-      -safe 0
-      -i "$concat_list"
-    )
+    command+=("${inputs[@]}")
   else
     if [ "$inputExtension" = "$outputExtension" ]; then
       tag=1
@@ -398,48 +410,120 @@ for file in $files; do
     if [ "$codec" = "h264" ]; then
       command+=(-c:v libx264)
     elif [ "$codec" = "h265" ]; then
+      x265_verbose=$(map_x265_verbose $verbose) 
       command+=(
         -c:v libx265 
-        -x265-params log-level="$verbose"
+        -x265-params log-level="${x265_verbose}"
       )
     fi
   fi
 
-  if [ -n "$resolution_preset" ]; then
-    if [ -z "${RESOLUTION_PRESETS[$resolution_preset]}" ]; then
-      [ "$verbose" -ge 0 ] && echo -e "\033[31mError:\033[0m Unknown resolution preset '$resolution_preset'" >&2
-      exit 1
-    fi
+  if [ "$concatenate" = true ]; then
+    video_chains=()
+    audio_chains=()
+    idx=0
+    for file in $files; do
+      # vídeo
+      v_chain="[${idx}:v]"
 
-    w_h="${RESOLUTION_PRESETS[$resolution_preset]}"
 
-    if [ "$enableAcceleration" = true ]; then
-      extra_vf_filters+=("scale_vaapi=w=${w_h%:*}:h=${w_h#*:}")
-    else
-      extra_vf_filters+=("scale=${w_h}")
+      filters=()
+      vaapi_filters=()
+      for f in "${extra_vf_filters[@]}"; do
+        if [[ "$f" == *_vaapi* ]]; then
+          vaapi_filters+=("$f")
+        else
+          filters+=("$f")
+        fi
+      done
+      
+      if [ -n "$resolution_preset" ]; then
+        if [ -z "${RESOLUTION_PRESETS[$resolution_preset]}" ]; then
+          [ "$verbose" -ge 0 ] && echo -e "\033[31mError:\033[0m Unknown resolution preset '$resolution_preset'" >&2
+          exit 1
+        fi
+        w_h="${RESOLUTION_PRESETS[$resolution_preset]}"
+        filters+=("scale=${w_h}" "setsar=1")
+      fi
+
+      if [ ${#filters[@]} -eq 0 ]; then
+        v_chain+="null"
+      else
+        IFS=,
+        v_chain+="${filters[*]}"
+        IFS=$'\n'
+      fi
+      v_chain+="[v${idx}]"
+
+      # áudio (sempre identity)
+      a_chain="[${idx}:a]anull[a${idx}]"
+
+      video_chains+=("$v_chain")
+      audio_chains+=("$a_chain")
+
+      ((idx++))
+    done
+
+    concat_filter=""
+
+    for chain in "${video_chains[@]}"; do
+      concat_filter+="$chain;"
+    done
+
+    for chain in "${audio_chains[@]}"; do
+      concat_filter+="$chain;"
+    done
+
+    for i in $(seq 0 $((idx-1))); do
+      concat_filter+="[v${i}][a${i}]"
+    done
+
+    concat_filter+="concat=n=$idx:v=1:a=1"
+  else
+    if [ -n "$resolution_preset" ]; then
+      if [ -z "${RESOLUTION_PRESETS[$resolution_preset]}" ]; then
+        [ "$verbose" -ge 0 ] && echo -e "\033[31mError:\033[0m Unknown resolution preset '$resolution_preset'" >&2
+        exit 1
+      fi
+
+      w_h="${RESOLUTION_PRESETS[$resolution_preset]}"
+
+      if [ "$enableAcceleration" = true ]; then
+        extra_vf_filters+=("scale_vaapi=w=${w_h%:*}:h=${w_h#*:}")
+      else
+        extra_vf_filters+=("scale=${w_h}")
+      fi
     fi
+    cpu_filters=()
+    vaapi_filters=()
+    for f in "${extra_vf_filters[@]}"; do
+      if [[ "$f" == *_vaapi* ]]; then
+        vaapi_filters+=("$f")
+      else
+        cpu_filters+=("$f")
+      fi
+    done
   fi
 
-  cpu_filters=()
-  vaapi_filters=()
-  for f in "${extra_vf_filters[@]}"; do
-    if [[ "$f" == *_vaapi* ]]; then
-      vaapi_filters+=("$f")
-    else
-      cpu_filters+=("$f")
-    fi
-  done
   if [ "$verbose" -ge 40 ]; then
     [ -n "$vaapi_filters" ] && echo -e "\033[33mvaapi_filters args:\033[0m ${vaapi_filters[@]}"
     [ -n "$cpu_filters" ] && echo -e "\033[33mcpu_filters args:\033[0m ${cpu_filters[@]}"
+    [ -n "$filters" ] && echo -e "\033[33mcpu_filters args:\033[0m ${filters[@]}"
   fi
-  base_and_cpu_vf=($base_vf $cpu_filters)
   IFS=,
-  vf="${cpu_filters:+${cpu_filters[*]}}${base_vf:+${cpu_filters:+,}$base_vf}${vaapi_filters:+${base_and_cpu_vf:+,}${vaapi_filters[*]}}"
-  IFS=$'\n'
-  if [ -n "$vf" ]; then
-    command+=(-vf "$vf")
+  if [ "$concatenate" = true ]; then
+    filter_complex+="$concat_filter"
+    [ -n "$base_vf" ] && filter_complex+=",$base_vf"
+    [ -n "$vaapi_filters" ] && filter_complex+=",${vaapi_filters[*]}"
+    command+=(-filter_complex "$filter_complex")
+  else
+    base_and_cpu_vf=($base_vf $cpu_filters)
+    vf="${cpu_filters:+${cpu_filters[*]}}${base_vf:+${cpu_filters:+,}$base_vf}${vaapi_filters:+${base_and_cpu_vf:+,}${vaapi_filters[*]}}"
+    if [ -n "$vf" ]; then
+      command+=(-vf "$vf")
+    fi
   fi
+  IFS=$'\n'
 
   command+=(
     ${allstreams:+"${allstreams[@]}"}
@@ -470,8 +554,7 @@ for file in $files; do
   "${command[@]}"
 
   if [ "$concatenate" = true ]; then
-    [ $? -ne 0 ] && [ "$verbose" -ge 0 ] && echo -e "\033[31mError:\033[0m Failed to encode $concat_list" >&2 && exit 1
-    rm -f "$concat_list"
+    [ $? -ne 0 ] && [ "$verbose" -ge 0 ] && echo -e "\033[31mError:\033[0m Failed to encode." >&2 && exit 1
     exit 0
   fi
 
